@@ -14,7 +14,7 @@ import time
 import numpy as np
 import websockets
 
-from . import audio, library as library_admin
+from . import audio, library as library_admin, states
 from .asr import ASRFallback
 from .matcher import SampleLibrary
 from .vad import StreamingSegmenter
@@ -102,20 +102,34 @@ class RecognitionServer:
         }
         if m.tone == "sample":
             result.update({"name": m.name, "alias": m.alias, "category": m.category})
+            st = states.by_alias(m.alias)
+            if st:
+                result["id"] = st.id
 
-        # phase-3: ASR fallback for un-matched voice prompts
-        if m.tone == "prompt" and self.asr is not None:
-            asr_res = self.asr.recognize(seg.pcm, self._rate)
-            if asr_res is not None:
-                result.update({
-                    "tone": "asr",
-                    "accuracy": "ACCURACY",
-                    "category": asr_res.category,
-                    "alias": asr_res.alias,
-                    "text": asr_res.text,
-                })
-                if self.autolearn and self.samples_dir:
-                    self._autolearn(seg, asr_res)
+        if self.asr is not None:
+            if m.tone == "prompt":
+                # ASR 兜底:指纹未命中,转写+归类
+                asr_res = self.asr.recognize(seg.pcm, self._rate)
+                if asr_res is not None:
+                    result.update({
+                        "tone": "asr",
+                        "accuracy": "ACCURACY",
+                        "category": asr_res.category,
+                        "alias": asr_res.alias,
+                        "text": asr_res.text,
+                    })
+                    st = states.by_alias(asr_res.alias)
+                    if st:
+                        result["id"] = st.id
+                    if self.autolearn and self.samples_dir:
+                        self._autolearn(seg, asr_res)
+            elif m.tone == "sample" and m.accuracy == "INACCURACY":
+                # 交叉校验:指纹候选不够自信时,用 ASR 复核;一致则升为 ACCURACY
+                asr_res = self.asr.recognize(seg.pcm, self._rate)
+                if asr_res is not None and asr_res.alias == m.alias:
+                    result["accuracy"] = "ACCURACY"
+                    result["confirmed_by"] = "asr"
+                    result["text"] = asr_res.text
 
         log.info("RESULT %s", result)
 

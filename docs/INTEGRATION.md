@@ -170,22 +170,35 @@ START 之后的所有**二进制帧**均为原始小端 16-bit PCM(单声道,采
 | `bad_json` | START/控制帧 JSON 非法 |
 | `limit` | 并发超限,客户端应优雅降级 |
 
-### 3.7 号码状态对照表(category / alias)
+### 3.7 号码状态对照表(完整,id 2-20)
 
-| category | alias | 含义 |
-|---|---|---|
-| 关机 | power off | 已关机 |
-| 空号 | does not exist | 空号 |
-| 停机 | out of service | 停机 |
-| 正在通话中 | hold on | 通话中/占线 |
-| 暂停服务 | not in service | 暂停服务 |
-| 无法接通 | is not reachable | 无法接通 |
-| 来电提醒 | call reminder | 语音信箱/秘书台 |
-| 呼叫转移失败 | forwarded | 呼叫转移失败 |
-| 欠费 | defaulting | 欠费 |
-| 改号 | number change | 改号 |
-| 稍后再拨 | redial later | 稍后再拨 |
-| 无法接听 | cannot be connected | 无法接听 |
+标准表的单一来源为 `server/tonedetect_server/states.py`,`sampletool states` 可随时打印。
+
+| id | category | alias | 说明 |
+|---|---|---|---|
+| 2 | 关机 | power off | 关机 |
+| 3 | 空号 | does not exist | 空号 |
+| 4 | 停机 | out of service | 停机 |
+| 5 | 正在通话中 | hold on | 通话中(多数交换机拒接/无应答也返回此) |
+| 6 | 用户拒接 | not convenient | 用户拒接 |
+| 7 | 无法接通 | is not reachable | 无法接通 |
+| 8 | 暂停服务 | not in service | 暂停服务 |
+| 9 | 用户正忙 | busy now | 用户正忙 |
+| 10 | 拨号方式不正确 | not a local number | 拨号方式不正确 |
+| 11 | 呼入限制 | barring of incoming | 呼入限制 |
+| 12 | 来电提醒 | call reminder | 秘书服务/来电提醒/语音信箱/留言 |
+| 13 | 呼叫转移失败 | forwarded | 呼叫转移失败 |
+| 14 | 网络忙 | line is busy | 网络忙 |
+| 15 | 无人接听 | not answer | 无人接听 |
+| 16 | 欠费 | defaulting | 欠费 |
+| 17 | 无法接听 | cannot be connected | 无法接听 |
+| 18 | 改号 | number change | 改号 |
+| 19 | 线路故障 | line fault | 线路不能呼出(如 SIM 卡欠费) |
+| 20 | 稍后再拨 | redial later | 各种稍后再拨提示 |
+
+信号音(本地 DSP / 服务粗分):`ringback`/`busy`/`congestion`/`colorringback`(彩铃)/`450hz`/`silence`/`other`。
+
+> `RESULT` 命中状态时附带 `id` 字段(上表),便于上游按数字映射 SIP 挂机码。识别准确率的提升方法见 [`ACCURACY.md`](./ACCURACY.md)。
 
 ---
 
