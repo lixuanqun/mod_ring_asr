@@ -19,6 +19,7 @@
  */
 #include <switch.h>
 #include "tone_dsp.h"
+#include "ws_client.h"
 
 SWITCH_MODULE_LOAD_FUNCTION(mod_tonedetect_load);
 SWITCH_MODULE_SHUTDOWN_FUNCTION(mod_tonedetect_shutdown);
@@ -42,6 +43,8 @@ static struct {
 	int autohangup;
 	int maxdetecttime;       /* seconds */
 	tone_dsp_config_t dsp;   /* default DSP tuning (rule ranges, thresholds) */
+	char server_url[256];    /* phase-2: recognition service ws:// url ("" = disabled) */
+	char server_key[128];    /* phase-2: auth key sent in START */
 } globals;
 
 typedef struct {
@@ -53,6 +56,7 @@ typedef struct {
 	switch_time_t start_time;
 	int stopped;
 	const char *finish_cause;
+	ws_client_t *ws;         /* phase-2: streaming client (NULL = disabled) */
 } td_context_t;
 
 static uint32_t tone_to_mask(tone_type_t t)
@@ -127,6 +131,66 @@ static void on_tone(void *user, tone_type_t type, int begin_ms, int end_ms)
 	}
 }
 
+/* Phase-2: handle a RESULT JSON pushed back by the recognition service.
+ * Runs on the ws_client service thread. */
+static void ws_on_result(void *user, const char *json, size_t len)
+{
+	td_context_t *ctx = (td_context_t *) user;
+	switch_channel_t *channel;
+	switch_event_t *event;
+	cJSON *root, *item;
+	const char *type = "", *tone = "", *accuracy = "", *alias = "", *category = "", *name = "";
+
+	(void) len;
+	if (!ctx || !ctx->session || !json) return;
+	channel = switch_core_session_get_channel(ctx->session);
+
+	root = cJSON_Parse(json);
+	if (!root) return;
+
+	if ((item = cJSON_GetObjectItem(root, "type")) && item->valuestring) type = item->valuestring;
+	if (strcmp(type, "result") != 0) {
+		cJSON_Delete(root);
+		return;
+	}
+	if ((item = cJSON_GetObjectItem(root, "tone")) && item->valuestring) tone = item->valuestring;
+	if ((item = cJSON_GetObjectItem(root, "accuracy")) && item->valuestring) accuracy = item->valuestring;
+	if ((item = cJSON_GetObjectItem(root, "alias")) && item->valuestring) alias = item->valuestring;
+	if ((item = cJSON_GetObjectItem(root, "category")) && item->valuestring) category = item->valuestring;
+	if ((item = cJSON_GetObjectItem(root, "name")) && item->valuestring) name = item->valuestring;
+
+	switch_channel_set_variable(channel, "tonedetect_da_tone", tone);
+	switch_channel_set_variable(channel, "tonedetect_da_accuracy", accuracy);
+	if (*alias) switch_channel_set_variable(channel, "tonedetect_da_alias", alias);
+	if (*category) switch_channel_set_variable(channel, "tonedetect_da_category", category);
+	if (*name) switch_channel_set_variable(channel, "tonedetect_da_name", name);
+
+	if (switch_event_create_subclass(&event, SWITCH_EVENT_CUSTOM, TONEDETECT_EVENT_SUBCLASS) == SWITCH_STATUS_SUCCESS) {
+		switch_channel_event_set_data(channel, event);
+		switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "tonedetect_source", "server");
+		switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "tonedetect_da_tone", tone);
+		switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "tonedetect_da_accuracy", accuracy);
+		if (*alias) switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "tonedetect_da_alias", alias);
+		if (*category) switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "tonedetect_da_category", category);
+		switch_event_fire(&event);
+	}
+
+	switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(ctx->session), SWITCH_LOG_INFO,
+		"tonedetect[server]: tone=%s accuracy=%s alias=%s category=%s\n", tone, accuracy, alias, category);
+
+	/* only ACCURACY sample matches drive autohangup */
+	if (!ctx->stopped && !strcmp(accuracy, "ACCURACY") && !strcmp(tone, "sample")) {
+		ctx->stopped = 1;
+		ctx->finish_cause = "sample";
+		switch_channel_set_variable(channel, "tonedetect_finish_cause", "sample");
+		if (ctx->autohangup) {
+			switch_channel_hangup(channel, SWITCH_CAUSE_NORMAL_CLEARING);
+		}
+	}
+
+	cJSON_Delete(root);
+}
+
 static switch_bool_t tonedetect_bug_cb(switch_media_bug_t *bug, void *user_data, switch_abc_type_t type)
 {
 	td_context_t *ctx = (td_context_t *) user_data;
@@ -140,6 +204,9 @@ static switch_bool_t tonedetect_bug_cb(switch_media_bug_t *bug, void *user_data,
 		switch_frame_t *frame = switch_core_media_bug_get_read_replace_frame(bug);
 		if (frame && frame->data && frame->samples > 0) {
 			tone_dsp_process(ctx->dsp, (const int16_t *) frame->data, frame->samples);
+			if (ctx->ws) {
+				ws_client_send_audio(ctx->ws, (const int16_t *) frame->data, frame->samples);
+			}
 		}
 		if (ctx->maxdetecttime > 0 &&
 			(switch_time_now() - ctx->start_time) > (switch_time_t) ctx->maxdetecttime * 1000000) {
@@ -158,6 +225,11 @@ static switch_bool_t tonedetect_bug_cb(switch_media_bug_t *bug, void *user_data,
 	}
 
 	case SWITCH_ABC_TYPE_CLOSE:
+		if (ctx->ws) {
+			ws_client_send_text(ctx->ws, "{\"type\":\"stop\"}");
+			ws_client_destroy(ctx->ws);
+			ctx->ws = NULL;
+		}
 		if (ctx->dsp) {
 			tone_dsp_destroy(ctx->dsp);
 			ctx->dsp = NULL;
@@ -231,6 +303,27 @@ SWITCH_STANDARD_APP(start_tonedetect_app)
 	}
 
 	switch_channel_set_private(channel, TONEDETECT_PRIVATE, bug);
+
+	/* phase-2: also stream audio to the recognition service if configured */
+	if (globals.server_url[0]) {
+		ctx->ws = ws_client_create(globals.server_url, ws_on_result, ctx);
+		if (ctx->ws && ws_client_start(ctx->ws) == 0) {
+			char start_json[640];
+			const char *uuid = switch_core_session_get_uuid(session);
+			switch_snprintf(start_json, sizeof(start_json),
+				"{\"type\":\"start\",\"version\":1,\"uuid\":\"%s\",\"codec\":\"L16\",\"samplerate\":%d,\"key\":\"%s\"}",
+				uuid ? uuid : "", dsp_cfg.sample_rate, globals.server_key);
+			ws_client_send_text(ctx->ws, start_json);
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO,
+				"tonedetect: streaming to recognition service %s\n", globals.server_url);
+		} else {
+			if (ctx->ws) { ws_client_destroy(ctx->ws); ctx->ws = NULL; }
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_WARNING,
+				"tonedetect: failed to connect recognition service %s (local DSP still active)\n",
+				globals.server_url);
+		}
+	}
+
 	switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO,
 		"tonedetect: started (rate=%d, stoptone=0x%02x, autohangup=%d, maxdetecttime=%d)\n",
 		dsp_cfg.sample_rate, ctx->stoptone_mask, ctx->autohangup, ctx->maxdetecttime);
@@ -299,6 +392,10 @@ static switch_status_t load_config(void)
 			} else if (!strcasecmp(name, "tone_ringback_rule")) {
 				apply_rule(value, &globals.dsp.ring_on_min, &globals.dsp.ring_on_max,
 					&globals.dsp.ring_off_min, &globals.dsp.ring_off_max);
+			} else if (!strcasecmp(name, "server_url")) {
+				switch_set_string(globals.server_url, value);
+			} else if (!strcasecmp(name, "server_key")) {
+				switch_set_string(globals.server_key, value);
 			}
 		}
 	}

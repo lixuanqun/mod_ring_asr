@@ -29,7 +29,7 @@
 | 阶段 | 范围 | 识别手段 | 状态 |
 |---|---|---|---|
 | **阶段 1** | 国内 450Hz 信号音:回铃/忙音/拥塞/450hz/静音 + other(疑似彩铃/语音粗分) | 本地 DSP(Goertzel + cadence) | ✅ 已实现 |
-| 阶段 2 | 语音提示音:空号/关机/停机/通话中/语音信箱等 | 独立服务 + VAD 切片 + **音频指纹/样本库匹配** | 规划 |
+| **阶段 2** | 语音提示音:空号/关机/停机/通话中/语音信箱等 | 独立 Python 服务([`server/`](./server)) + VAD 切片 + **音频指纹/样本库匹配** | ✅ 已实现 |
 | 阶段 3 | 样本库未命中的兜底与泛化 | **ASR 转写 + 关键词匹配**,未命中样本回流补库 | 规划 |
 
 > 选型依据:语音提示音识别以**音频指纹/样本库匹配**为主(快、省 CPU、加样本即扩展),ASR 仅作兜底。彩铃/真人等"非纯音"先由 DSP 粗分为 `other`,交识别服务细分。
@@ -176,7 +176,9 @@ ESL 订阅示例:`CHANNEL_HANGUP_COMPLETE CUSTOM tonedetect`。
 | 路径 | 说明 |
 |---|---|
 | `src/tone_dsp.{h,c}` | 与 FreeSWITCH 解耦的 DSP 核心:Goertzel + cadence 状态机 |
-| `module/mod_tonedetect.c` | FreeSWITCH 模块:media bug 抓早期媒体 → DSP → channel 变量 / CUSTOM 事件 / autohangup |
+| `src/ws_client.{h,c}` | 与 FreeSWITCH 解耦的 libwebsockets 客户端:把 L16 音频流式推给识别服务 |
+| `server/` | 阶段2 独立 Python 识别服务(WebSocket + VAD + 音频指纹/样本库匹配),见 `server/README.md` |
+| `module/mod_tonedetect.c` | FreeSWITCH 模块:media bug 抓早期媒体 → 本地 DSP + 经 WebSocket 推流识别服务 → channel 变量 / CUSTOM 事件 / autohangup |
 | `module/tonedetect.conf.xml` | 模块配置(stoptone / autohangup / maxdetecttime / 节奏规则) |
 | `module/Makefile` | 针对已安装的 FreeSWITCH 构建 `mod_tonedetect.so` |
 | `test/` | 离线测试:WAV 读写、合成音生成器、检测器测试程序 |
