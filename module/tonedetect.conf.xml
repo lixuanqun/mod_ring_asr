@@ -1,0 +1,30 @@
+<configuration name="tonedetect.conf" description="Call-progress (ringback) tone detection - China 450Hz plan">
+  <settings>
+    <!-- Which tones stop detection. Space/comma list of:
+         busy ringback congestion 450hz silence other all
+         Overridable per call with channel variable tonedetect_stoptone -->
+    <param name="stoptone" value="busy silence"/>
+
+    <!-- Hang up the call automatically when a stoptone is matched.
+         Overridable per call with channel variable tonedetect_autohangup -->
+    <param name="autohangup" value="true"/>
+
+    <!-- Maximum detection time in seconds.
+         Overridable per call with channel variable tonedetect_maxdetecttime -->
+    <param name="maxdetecttime" value="60"/>
+
+    <!-- DSP tuning -->
+    <!-- Fraction (0..1) of block energy at 450Hz to consider it a pure tone -->
+    <!-- <param name="purity_threshold" value="0.40"/> -->
+    <!-- RMS below this (out of 32768) is treated as silence -->
+    <!-- <param name="silence_rms" value="200"/> -->
+
+    <!-- Cadence rules: "on_min-on_max|off_min-off_max" in milliseconds -->
+    <!-- 忙音 (busy): on ~350ms / off ~350ms -->
+    <!-- <param name="tone_busy_rule" value="250-450|250-450"/> -->
+    <!-- 拥塞/快忙 (congestion): on ~700ms / off ~700ms -->
+    <!-- <param name="tone_congestion_rule" value="550-850|500-850"/> -->
+    <!-- 回铃音 (ringback): on ~1000ms / off ~4000ms -->
+    <!-- <param name="tone_ringback_rule" value="800-1300|3000-5000"/> -->
+  </settings>
+</configuration>
