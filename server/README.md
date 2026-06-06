@@ -101,6 +101,31 @@ python -m tonedetect_server.sampletool remove --samples ./samples --name guanji_
 
 入库后重启服务(或重新加载样本库)即可命中该提示音。
 
+## 阶段3: ASR 兜底 + 自动回流补库
+
+样本库未命中(`prompt`)的段,可经 **ASR 转写 + 关键词归类** 兜底识别号码状态
+(覆盖样本库尚未收录的措辞/运营商差异),并可**自动把该段补进样本库并热重载**,
+使下次走更快更准的指纹匹配。
+
+```
+指纹未命中(prompt)
+   └─ASR 兜底─► 转写文本 ─关键词归类─► 命中? ──是──► 返回 tone=asr + 号码状态
+                                          │           └─(--asr-autolearn)自动补库+热重载
+                                          └─否──► 仍 prompt(落 capture 待人工)
+```
+
+启用(需先实现/接入真实 ASR 引擎):
+
+```bash
+python -m tonedetect_server --samples ./samples --asr whisper --asr-autolearn
+```
+
+- ASR 引擎**可插拔**:在 `asr.create_asr()` 里接入本地 Whisper 或云端 ASR
+  (`StubASR` 仅用于测试/演示)。
+- `KeywordClassifier`(`asr.py`)把转写文本按关键词映射为号码状态(关机/空号/停机/
+  通话中/语音信箱/暂停服务…),规则可扩展。
+- 返回结果 `tone="asr"`,带 `category`/`alias`/`text`。
+
 ## 测试
 
 ```bash
@@ -109,4 +134,6 @@ python tests/test_matcher.py          # 指纹匹配 + VAD 单测(无网络)
 python tests/test_ws_e2e.py           # WebSocket 端到端(进程内起服务 + 客户端)
 python tests/test_library_admin.py    # 样本库 add/list/remove/promote + 重采样
 python tests/test_capture_reflow.py   # 闭环: 未命中回流 -> 打标入库 -> 命中
+python tests/test_asr.py              # ASR 关键词分类器 + 兜底
+python tests/test_asr_reflow.py       # 闭环: 未命中 -> ASR归类 -> 自动补库 -> 指纹命中
 ```
