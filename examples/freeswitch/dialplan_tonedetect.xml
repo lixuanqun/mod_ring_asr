@@ -1,0 +1,46 @@
+<!--
+  示例:在 dialplan 中对外呼启用回铃音/号码状态检测。
+  放入 FreeSWITCH 的 dialplan(如 conf/dialplan/default.xml 内),按需取用。
+
+  前置:已加载 mod_tonedetect;若用阶段2/3 的识别服务,在
+  conf/autoload_configs/tonedetect.conf.xml 配好 server_url。
+-->
+<include>
+
+  <!-- 场景1:最简单 —— 收到 183 早期媒体即启动检测,bridge 到网关 -->
+  <extension name="tonedetect_basic">
+    <condition field="destination_number" expression="^9(\d+)$">
+      <action application="export" data="nolocal:execute_on_pre_answer=start_tonedetect"/>
+      <action application="bridge" data="sofia/gateway/mygw/$1"/>
+    </condition>
+  </extension>
+
+  <!-- 场景2:命中忙音/静音即自动挂机,并把识别结果写入变量(供 CDR/ESL 读取) -->
+  <extension name="tonedetect_autohangup">
+    <condition field="destination_number" expression="^8(\d+)$">
+      <action application="set" data="tonedetect_stoptone=busy congestion silence"/>
+      <action application="set" data="tonedetect_autohangup=true"/>
+      <action application="set" data="tonedetect_maxdetecttime=45"/>
+      <action application="export" data="nolocal:execute_on_pre_answer=start_tonedetect"/>
+      <action application="bridge" data="sofia/gateway/mygw/$1"/>
+    </condition>
+  </extension>
+
+  <!-- 场景3:采集样本 —— 录制早期媒体,便于后续入库(配合识别服务的回流) -->
+  <extension name="tonedetect_record">
+    <condition field="destination_number" expression="^7(\d+)$">
+      <action application="set" data="tonedetect_record_path=/var/lib/freeswitch/tonedetect_rec"/>
+      <action application="export" data="nolocal:execute_on_pre_answer=start_tonedetect"/>
+      <action application="bridge" data="sofia/gateway/mygw/$1"/>
+    </condition>
+  </extension>
+
+  <!-- 场景4:模拟线路无 183、应答后才有提示音 —— 用 execute_on_media -->
+  <extension name="tonedetect_on_media">
+    <condition field="destination_number" expression="^6(\d+)$">
+      <action application="export" data="nolocal:execute_on_media=start_tonedetect"/>
+      <action application="bridge" data="sofia/gateway/mygw/$1"/>
+    </condition>
+  </extension>
+
+</include>
