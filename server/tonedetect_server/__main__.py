@@ -14,6 +14,8 @@ def main():
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=9977)
     ap.add_argument("--samples", default=None, help="sample library directory (with samples.json)")
+    ap.add_argument("--capture-dir", default=None,
+                    help="directory to save un-matched (prompt) segments for later labeling")
     ap.add_argument("--key", default=None, help="auth key required in START")
     ap.add_argument("--accuracy", type=float, default=0.75)
     ap.add_argument("--inaccuracy", type=float, default=0.60)
@@ -28,7 +30,7 @@ def main():
                             inaccuracy_threshold=args.inaccuracy)
 
     try:
-        asyncio.run(serve(args.host, args.port, library, key=args.key))
+        asyncio.run(serve(args.host, args.port, library, key=args.key, capture_dir=args.capture_dir))
     except KeyboardInterrupt:
         pass
 

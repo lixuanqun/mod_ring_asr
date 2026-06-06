@@ -8,10 +8,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import time
 
 import numpy as np
 import websockets
 
+from . import audio
 from .matcher import SampleLibrary
 from .vad import StreamingSegmenter
 
@@ -19,9 +22,12 @@ log = logging.getLogger("tonedetect_server")
 
 
 class RecognitionServer:
-    def __init__(self, library: SampleLibrary, key: str | None = None):
+    def __init__(self, library: SampleLibrary, key: str | None = None, capture_dir: str | None = None):
         self.library = library
         self.key = key
+        self.capture_dir = capture_dir
+        if capture_dir:
+            os.makedirs(capture_dir, exist_ok=True)
 
     async def handle(self, ws):
         peer = getattr(ws, "remote_address", None)
@@ -92,7 +98,31 @@ class RecognitionServer:
         if m.tone == "sample":
             result.update({"name": m.name, "alias": m.alias, "category": m.category})
         log.info("RESULT %s", result)
+
+        # reflow: persist un-matched voice prompts for later labeling
+        if self.capture_dir and m.tone == "prompt":
+            self._capture(seg, m.score)
+
         await self._safe_send(ws, result)
+
+    def _capture(self, seg, score: float):
+        try:
+            base = f"{self._uuid or 'unknown'}_{int(time.time() * 1000)}_{seg.begin_ms}"
+            wav = os.path.join(self.capture_dir, base + ".wav")
+            audio.write_wav_mono16(wav, seg.pcm, self._rate)
+            meta = {
+                "uuid": self._uuid,
+                "rate": self._rate,
+                "begin_ms": seg.begin_ms,
+                "end_ms": seg.end_ms,
+                "score": round(score, 4),
+                "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            with open(os.path.join(self.capture_dir, base + ".json"), "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False)
+            log.info("captured un-matched segment -> %s", wav)
+        except OSError as e:
+            log.warning("capture failed: %s", e)
 
     @staticmethod
     async def _safe_send(ws, obj: dict):
@@ -102,9 +132,10 @@ class RecognitionServer:
             pass
 
 
-async def serve(host: str, port: int, library: SampleLibrary, key: str | None = None):
-    server = RecognitionServer(library, key=key)
+async def serve(host: str, port: int, library: SampleLibrary,
+                key: str | None = None, capture_dir: str | None = None):
+    server = RecognitionServer(library, key=key, capture_dir=capture_dir)
     async with websockets.serve(server.handle, host, port, max_size=None):
-        log.info("tonedetect recognition server listening on ws://%s:%d (samples=%d)",
-                 host, port, len(library.samples))
+        log.info("tonedetect recognition server listening on ws://%s:%d (samples=%d, capture=%s)",
+                 host, port, len(library.samples), capture_dir or "off")
         await asyncio.Future()  # run forever

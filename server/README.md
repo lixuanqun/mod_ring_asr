@@ -56,10 +56,57 @@ python -m tonedetect_server --host 0.0.0.0 --port 9977 --samples ./samples --key
 | 样本匹配 | `matcher.py` | 与样本库指纹求余弦相似度,最近邻 + 阈值分级 |
 | WS 服务 | `server.py` | START 握手/鉴权 → 收 L16 二进制帧 → 切片匹配 → 回 RESULT JSON |
 
+## 样本库采集流程(闭环)
+
+准确率取决于样本库覆盖度。系统提供"自动回流 → 人工打标 → 入库 → 即刻命中"的闭环:
+
+```
+                  ┌─────────────────────────────────────────────┐
+                  │  未命中(prompt)的语音段                       │
+  早期媒体 ──►识别─┤                                              │
+                  │  命中(sample)→ 直接返回结果                   │
+                  └──────────────┬──────────────────────────────┘
+                                 │ --capture-dir 自动落盘 WAV+sidecar
+                                 ▼
+                          待标注目录 (capture/)
+                                 │ sampletool promote(人工打标)
+                                 ▼
+                          样本库 (samples/) ──► 重载后即可命中
+```
+
+**采集来源**
+
+1. **服务端自动回流**:服务以 `--capture-dir ./capture` 启动后,所有未命中(`prompt`)的
+   语音段会自动存成 `<uuid>_<ts>_<begin>.wav` + 同名 `.json`(含 uuid/score/时间)。
+2. **mod 侧录音**:`tonedetect.conf.xml` 配 `recordpath`(或通道变量 `tonedetect_record_path`),
+   把整段早期媒体录成 `<uuid>.wav`,供人工裁剪入库。
+
+**打标入库 CLI(`sampletool`)**
+
+```bash
+# 查看待标注的回流录音
+python -m tonedetect_server.sampletool pending --capture ./capture
+
+# 试听后, 把某条回流录音打标正式入库(自动转 8k 单声道, 并清理回流文件)
+python -m tonedetect_server.sampletool promote --samples ./samples \
+       --wav ./capture/uuidX_1.wav --name konghao_yidong --alias "does not exist" --category 空号
+
+# 直接入库一个已有 WAV
+python -m tonedetect_server.sampletool add --samples ./samples \
+       --wav prompt.wav --name guanji_yidong --alias "power off" --category 关机
+
+python -m tonedetect_server.sampletool list   --samples ./samples   # 列出
+python -m tonedetect_server.sampletool remove --samples ./samples --name guanji_yidong
+```
+
+入库后重启服务(或重新加载样本库)即可命中该提示音。
+
 ## 测试
 
 ```bash
 . .venv/bin/activate
-python tests/test_matcher.py    # 指纹匹配 + VAD 单测(无网络)
-python tests/test_ws_e2e.py     # WebSocket 端到端(进程内起服务 + 客户端)
+python tests/test_matcher.py          # 指纹匹配 + VAD 单测(无网络)
+python tests/test_ws_e2e.py           # WebSocket 端到端(进程内起服务 + 客户端)
+python tests/test_library_admin.py    # 样本库 add/list/remove/promote + 重采样
+python tests/test_capture_reflow.py   # 闭环: 未命中回流 -> 打标入库 -> 命中
 ```
