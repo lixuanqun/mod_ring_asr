@@ -2,7 +2,7 @@
 
 接收 FreeSWITCH `mod_tonedetect` 经 WebSocket 推送的早期媒体 L16 音频,做
 **VAD 切片 + 音频指纹/样本库匹配**,识别号码状态(空号/关机/停机/语音信箱等
-语音提示音),并回推识别结果。协议见 [`PROTOCOL.md`](./PROTOCOL.md)。
+语音提示音),并回推识别结果。协议与对接见 [`../docs/INTEGRATION.md`](../docs/INTEGRATION.md)。
 
 ## 安装
 
