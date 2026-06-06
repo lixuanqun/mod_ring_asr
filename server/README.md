@@ -97,9 +97,13 @@ python -m tonedetect_server.sampletool add --samples ./samples \
 
 python -m tonedetect_server.sampletool list   --samples ./samples   # 列出
 python -m tonedetect_server.sampletool remove --samples ./samples --name guanji_yidong
+python -m tonedetect_server.sampletool states                       # 打印 da2 标准状态表(id 2-20)
 ```
 
+入库时 `alias`/`category` 会按标准状态表(`states.py`)归一化(给出其一即补全另一并写入 `id`)。
 入库后重启服务(或重新加载样本库)即可命中该提示音。
+
+> **识别全部 19 个状态 + 提升准确率**的完整方法见 [`../docs/ACCURACY.md`](../docs/ACCURACY.md)。
 
 ## 阶段3: ASR 兜底 + 自动回流补库
 

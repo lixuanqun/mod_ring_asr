@@ -163,6 +163,8 @@ originate {ignore_early_media=consume,execute_on_pre_answer=start_tonedetect}sof
 | `src/ws_client.{h,c}` | 与 FreeSWITCH 解耦的 libwebsockets 客户端:把 L16 音频流式推给识别服务 |
 | `server/` | 阶段2/3 独立 Python 识别服务(WebSocket + VAD + 音频指纹/样本库 + ASR 兜底),见 `server/README.md` |
 | `docs/INTEGRATION.md` | 对接文档:WebSocket 协议、第三方服务实现指南、FreeSWITCH 侧对接(含架构/时序图) |
+| `docs/ACCURACY.md` | 识别全部号码状态(da2 id 2-20)与提升准确率指南 |
+| `server/tonedetect_server/states.py` | 号码状态标准表(id/name/alias)单一来源,供匹配/ASR/文档引用 |
 | `module/mod_tonedetect.c` | FreeSWITCH 模块:media bug 抓早期媒体 → 本地 DSP + 经 WebSocket 推流识别服务 → channel 变量 / CUSTOM 事件 / autohangup |
 | `module/tonedetect.conf.xml` | 模块配置(stoptone / autohangup / maxdetecttime / 节奏规则) |
 | `module/Makefile` | 针对已安装的 FreeSWITCH 构建 `mod_tonedetect.so` |
