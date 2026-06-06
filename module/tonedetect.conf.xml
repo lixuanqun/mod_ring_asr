@@ -26,5 +26,13 @@
     <!-- <param name="tone_congestion_rule" value="550-850|500-850"/> -->
     <!-- 回铃音 (ringback): on ~1000ms / off ~4000ms -->
     <!-- <param name="tone_ringback_rule" value="800-1300|3000-5000"/> -->
+
+    <!-- 阶段2: 把早期媒体经 WebSocket 推给识别服务 (留空=不启用) -->
+    <!-- <param name="server_url" value="ws://127.0.0.1:9977/"/> -->
+    <!-- <param name="server_key" value=""/> -->
+
+    <!-- 样本采集: 把早期媒体录音到该目录 (留空=不录音);
+         也可用通道变量 tonedetect_record_path 覆盖. 录音文件名为 <uuid>.wav -->
+    <!-- <param name="recordpath" value="/var/lib/freeswitch/tonedetect_rec"/> -->
   </settings>
 </configuration>
