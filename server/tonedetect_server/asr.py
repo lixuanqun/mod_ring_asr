@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from . import states
+
 
 @dataclass
 class AsrResult:
@@ -24,30 +26,18 @@ class AsrResult:
 
 
 class KeywordClassifier:
-    """转写文本 -> (category, alias)。规则按优先级匹配(先具体后宽泛)。"""
+    """转写文本 -> (category, alias)。覆盖 da2 全部号码状态(id 2-20)。
 
-    # (关键词列表, category, alias) —— 对齐 da2 的号码状态表
-    RULES: list[tuple[list[str], str, str]] = [
-        (["关机", "已关机"], "关机", "power off"),
-        (["空号", "不存在", "查无此号", "是空号"], "空号", "does not exist"),
-        (["停机", "已停机"], "停机", "out of service"),
-        (["正在通话", "通话中", "占线", "正忙"], "正在通话中", "hold on"),
-        (["暂停服务", "限制呼入"], "暂停服务", "not in service"),
-        (["无法接通", "暂时无法接通", "不在服务区", "没有应答"], "无法接通", "is not reachable"),
-        (["呼叫转移", "已转移"], "呼叫转移失败", "forwarded"),
-        (["语音信箱", "留言", "录音"], "来电提醒", "call reminder"),
-        (["欠费"], "欠费", "defaulting"),
-        (["改号", "新号码"], "改号", "number change"),
-        (["稍后再拨", "请稍后", "稍后", "再拨"], "稍后再拨", "redial later"),
-        (["无法接听"], "无法接听", "cannot be connected"),
-    ]
+    规则与优先级来自 states.py 的标准表(`ordered_states()`,先具体后宽泛,
+    "稍后再拨"放最末避免把"通话中,请稍后再拨"误判)。
+    """
 
     def classify(self, text: str) -> tuple[str, str] | None:
         if not text:
             return None
-        for keywords, category, alias in self.RULES:
-            if any(k in text for k in keywords):
-                return category, alias
+        for st in states.ordered_states():
+            if any(k in text for k in st.keywords):
+                return st.name, st.alias
         return None
 
 

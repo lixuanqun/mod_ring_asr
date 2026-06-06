@@ -24,7 +24,15 @@ import json
 import os
 import sys
 
-from . import library
+from . import library, states
+
+
+def _cmd_states(args):
+    print(f"{'id':>3} {'name':10} {'alias':22} description")
+    for s in states.STATES:
+        print(f"{s.id:>3} {s.name:10} {s.alias:22} {s.description}")
+    print("\n信号音: " + ", ".join(f"{k}({v})" for k, v in states.SIGNAL_TONES.items()))
+    return 0
 
 
 def _cmd_list(args):
@@ -79,6 +87,8 @@ def _cmd_pending(args):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="sampletool", description="tonedetect sample-library管理")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("states").set_defaults(fn=_cmd_states)
 
     p = sub.add_parser("list"); p.add_argument("--samples", required=True); p.set_defaults(fn=_cmd_list)
 

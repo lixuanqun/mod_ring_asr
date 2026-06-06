@@ -11,7 +11,7 @@ import shutil
 
 import numpy as np
 
-from . import audio
+from . import audio, states
 
 TARGET_RATE = 8000
 
@@ -48,9 +48,21 @@ def save_index(samples_dir: str, entries: list[dict]) -> None:
 
 
 def add_sample(samples_dir: str, wav_path: str, name: str,
-               alias: str = "", category: str = "", rate: int = TARGET_RATE) -> dict:
-    """把 wav_path 转 8k 单声道入库为样本 name. 已存在同名则覆盖."""
+               alias: str = "", category: str = "", rate: int = TARGET_RATE,
+               strict: bool = False) -> dict:
+    """把 wav_path 转 8k 单声道入库为样本 name. 已存在同名则覆盖.
+
+    alias/category 会按标准状态表(states.py)归一化: 给出其一即可补全另一.
+    strict=True 时,不在标准表中的状态会抛错(避免样本库标签发散)。
+    """
     os.makedirs(samples_dir, exist_ok=True)
+
+    st = states.normalize(category=category, alias=alias)
+    if st is not None:
+        alias, category = st.alias, st.name
+    elif strict and (alias or category):
+        raise ValueError(f"alias/category 不在标准状态表中: alias={alias!r} category={category!r}")
+
     pcm, src_rate = audio.read_wav_mono16(wav_path)
     pcm = resample_linear(pcm, src_rate, rate)
 
@@ -59,6 +71,8 @@ def add_sample(samples_dir: str, wav_path: str, name: str,
 
     entries = [e for e in load_index(samples_dir) if e.get("name") != name]
     entry = {"file": dest_file, "name": name, "alias": alias, "category": category}
+    if st is not None:
+        entry["id"] = st.id
     entries.append(entry)
     save_index(samples_dir, entries)
     return entry
