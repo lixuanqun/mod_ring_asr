@@ -45,6 +45,7 @@ static struct {
 	tone_dsp_config_t dsp;   /* default DSP tuning (rule ranges, thresholds) */
 	char server_url[256];    /* phase-2: recognition service ws:// url ("" = disabled) */
 	char server_key[128];    /* phase-2: auth key sent in START */
+	char recordpath[256];    /* collection: dir to record early media WAV ("" = disabled) */
 } globals;
 
 typedef struct {
@@ -57,6 +58,7 @@ typedef struct {
 	int stopped;
 	const char *finish_cause;
 	ws_client_t *ws;         /* phase-2: streaming client (NULL = disabled) */
+	switch_file_handle_t *rec_fh; /* collection: early-media recording (NULL = disabled) */
 } td_context_t;
 
 static uint32_t tone_to_mask(tone_type_t t)
@@ -207,6 +209,10 @@ static switch_bool_t tonedetect_bug_cb(switch_media_bug_t *bug, void *user_data,
 			if (ctx->ws) {
 				ws_client_send_audio(ctx->ws, (const int16_t *) frame->data, frame->samples);
 			}
+			if (ctx->rec_fh) {
+				switch_size_t len = frame->samples;
+				switch_core_file_write(ctx->rec_fh, frame->data, &len);
+			}
 		}
 		if (ctx->maxdetecttime > 0 &&
 			(switch_time_now() - ctx->start_time) > (switch_time_t) ctx->maxdetecttime * 1000000) {
@@ -229,6 +235,10 @@ static switch_bool_t tonedetect_bug_cb(switch_media_bug_t *bug, void *user_data,
 			ws_client_send_text(ctx->ws, "{\"type\":\"stop\"}");
 			ws_client_destroy(ctx->ws);
 			ctx->ws = NULL;
+		}
+		if (ctx->rec_fh) {
+			switch_core_file_close(ctx->rec_fh);
+			ctx->rec_fh = NULL;
 		}
 		if (ctx->dsp) {
 			tone_dsp_destroy(ctx->dsp);
@@ -303,6 +313,30 @@ SWITCH_STANDARD_APP(start_tonedetect_app)
 	}
 
 	switch_channel_set_private(channel, TONEDETECT_PRIVATE, bug);
+
+	/* collection: record the early media to a WAV for sample harvesting */
+	{
+		const char *recordpath = switch_channel_get_variable(channel, "tonedetect_record_path");
+		if (!recordpath && globals.recordpath[0]) recordpath = globals.recordpath;
+		if (recordpath) {
+			char path[512];
+			const char *uuid = switch_core_session_get_uuid(session);
+			ctx->rec_fh = switch_core_session_alloc(session, sizeof(*ctx->rec_fh));
+			memset(ctx->rec_fh, 0, sizeof(*ctx->rec_fh));
+			switch_snprintf(path, sizeof(path), "%s%s%s.wav", recordpath,
+				SWITCH_PATH_SEPARATOR, uuid ? uuid : "tonedetect");
+			if (switch_core_file_open(ctx->rec_fh, path, 1, dsp_cfg.sample_rate,
+					SWITCH_FILE_FLAG_WRITE | SWITCH_FILE_DATA_SHORT,
+					switch_core_session_get_pool(session)) != SWITCH_STATUS_SUCCESS) {
+				ctx->rec_fh = NULL;
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_WARNING,
+					"tonedetect: failed to open record file %s\n", path);
+			} else {
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO,
+					"tonedetect: recording early media to %s\n", path);
+			}
+		}
+	}
 
 	/* phase-2: also stream audio to the recognition service if configured */
 	if (globals.server_url[0]) {
@@ -396,6 +430,8 @@ static switch_status_t load_config(void)
 				switch_set_string(globals.server_url, value);
 			} else if (!strcasecmp(name, "server_key")) {
 				switch_set_string(globals.server_key, value);
+			} else if (!strcasecmp(name, "recordpath")) {
+				switch_set_string(globals.recordpath, value);
 			}
 		}
 	}
