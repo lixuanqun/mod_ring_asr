@@ -9,7 +9,7 @@ WAVDIR  := $(BUILD)/test_wavs
 
 .PHONY: all test clean tones
 
-all: $(BUILD)/test_dsp $(BUILD)/gen_tones
+all: $(BUILD)/test_dsp $(BUILD)/gen_tones $(BUILD)/ws_stream_test
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -25,6 +25,14 @@ $(BUILD)/test_dsp: test/test_dsp.c $(BUILD)/tone_dsp.o $(BUILD)/wavfile.o | $(BU
 
 $(BUILD)/gen_tones: test/gen_tones.c $(BUILD)/wavfile.o | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDLIBS)
+
+# WebSocket streaming harness (needs libwebsockets); streams a WAV to the
+# recognition service and prints results.
+$(BUILD)/ws_client.o: src/ws_client.c src/ws_client.h | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/ws_stream_test: test/ws_stream_test.c $(BUILD)/ws_client.o $(BUILD)/wavfile.o | $(BUILD)
+	$(CC) $(CFLAGS) $^ -o $@ $(LDLIBS) -lwebsockets -lpthread
 
 tones: $(BUILD)/gen_tones
 	$(BUILD)/gen_tones $(WAVDIR)
