@@ -326,6 +326,31 @@ trait AsrEngine: Send + Sync {
 
 ---
 
+## 11. 容量、稳定性与可扩展性(相对 Java 版的差异化说明)
+
+> 目标与口径**与 [Java 版 §10–§13](./回铃音检测平台-服务端建设方案-Java版.md#10-容量规划与-slo) 完全一致**(SLO、延迟预算、fail-open 降级、ASR 隔离、健康检查、热重载灰度、可插拔 Extractor/Index/Matcher 抽象、协议演进与安全),此处仅列 Rust 的实现差异与优势。
+
+### 11.1 容量与性能
+- **更高密度**:无 GC + 低单连接开销,**同等内存承载更多并发连接**;`p99` 尾延迟更稳(无 GC 停顿)。
+- 指纹批量匹配可用 SIMD(`std::simd`/`wide`)与 `ndarray`/矩阵乘加速;线性小库延迟可忽略。
+
+### 11.2 稳定性与容错(Rust 实现)
+- **超时**:`tokio::time::timeout` 包裹 ASR 调用。
+- **熔断/隔离舱**:用 `tower` 中间件(`tower::limit`、自定义 `Layer`)或 `Semaphore` 实现限流/熔断/bulkhead;ASR 故障短路走 `prompt`。
+- **过载**:`Semaphore` 控全局并发,超限回 `error.reason=limit`。
+- **健康检查/优雅启停**:axum 暴露 `/healthz` `/readyz`;`tokio::signal` 捕获信号 → 停止接新连接 → drain 现有连接(`CancellationToken`)→ 退出。
+- **热重载**:`arc_swap::ArcSwap<Library>` 原子换库,进行中匹配持旧 `Guard` 跑完。
+
+### 11.3 可扩展抽象 + ANN(Rust 实现)
+- `trait FeatureExtractor / Index / Matcher`(`dyn` 或泛型);`Index` 实现:`LinearIndex` / `hnsw_rs`(HNSW)/ `faiss` 绑定(IVF-PQ)。
+- 深度嵌入用 `candle` / `ort`(ONNX Runtime)/ `tch` 推理;模型经 ONNX 跨语言复用。
+- 演进路径同 Java 版:`Fingerprint+Linear → HNSW → Embedding`,不改对外协议。
+
+### 11.4 安全
+- TLS 用 `rustls`(`wss`);输入加固(帧大小上限、START 校验、空闲超时)在 axum/tungstenite 层处理。
+
+---
+
 ## 附:相关文档索引
 
 | 文档 | 内容 |

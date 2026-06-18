@@ -337,6 +337,33 @@ def create_asr(name):   # 在此接入真实引擎
 
 ---
 
+## 11. 容量、稳定性与可扩展性(相对 Java 版的差异化说明)
+
+> 目标与口径**与 [Java 版 §10–§13](./回铃音检测平台-服务端建设方案-Java版.md#10-容量规划与-slo) 完全一致**(SLO、延迟预算、fail-open 降级、ASR 隔离、健康检查、热重载灰度、可插拔 Extractor/Index/Matcher 抽象、协议演进与安全),此处仅列 Python 的实现差异与注意点。
+
+### 11.1 容量与性能
+- **以"进程"为容量单元**:GIL 致单进程 CPU 受限,容量按 `单进程上限 × worker 进程数` 估算;节点数再据峰值并发反推。
+- 指纹匹配把样本库堆成矩阵用 `numpy` 单次矩阵乘;`uvloop` + `orjson` 降延迟;CPU 瓶颈用 `ProcessPoolExecutor` 卸载。
+- 内存注意:**多进程各复制一份样本库/模型**,容量规划需计入。
+
+### 11.2 稳定性与容错(Python 实现)
+- **超时**:`asyncio.wait_for` 包裹 ASR 调用。
+- **熔断/隔离舱**:`pybreaker` 或自实现熔断;ASR 用独立 `Semaphore`/进程池隔离,故障短路走 `prompt`。
+- **过载**:`asyncio.Semaphore` 控并发,超限回 `error.reason=limit`。
+- **健康检查/优雅启停**:FastAPI 暴露 `/healthz` `/readyz`;`gunicorn`/`uvicorn` 多 worker,捕获信号 → 停接新连接 → drain → 退出;**每个 worker 独立探活**。
+- **热重载**:重载样本库为新对象、替换共享引用(赋值原子),进行中匹配持旧引用跑完。
+
+### 11.3 可扩展抽象 + ANN(Python 实现)
+- 抽象 `FeatureExtractor / Index / Matcher`(`abc.ABC` 或 `Protocol`);`Index` 实现:线性(numpy)/ `hnswlib`(HNSW)/ `faiss`(IVF-PQ)。
+- 深度嵌入用 `torch`/`onnxruntime`/`faster-whisper` 生态(Python 优势最大);可进程内或拆 GPU 微服务。
+- 演进路径同 Java 版:`Fingerprint+Linear → HNSW → Embedding`,不改对外协议。
+
+### 11.4 注意点
+- **类型安全**:用 type hints + `mypy` 兜底动态类型风险。
+- **集群均摊**:LB 需把连接均摊到**所有 worker 进程**(非仅主机),否则单进程过载。
+
+---
+
 ## 附:相关文档索引
 
 | 文档 | 内容 |
