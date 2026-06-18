@@ -331,6 +331,7 @@ trait AsrEngine: Send + Sync {
 | 文档 | 内容 |
 |---|---|
 | [`docs/回铃音检测平台-服务端建设方案.md`](./回铃音检测平台-服务端建设方案.md) | 服务端建设方案 **Java 版**(含接口字段完整版附录 A) |
+| [`docs/回铃音检测平台-服务端建设方案-Python版.md`](./回铃音检测平台-服务端建设方案-Python版.md) | 服务端建设方案 **Python 版**(复用现有 `server/`,含 Java vs Python 对比) |
 | [`docs/回铃音检测-技术方案沟通.md`](./回铃音检测-技术方案沟通.md) | 总体技术方案沟通(工程实现版) |
 | [`docs/INTEGRATION.md`](./INTEGRATION.md) | WebSocket 协议 v1、对接契约、状态对照表(id 2-20)、FreeSWITCH 侧对接 |
 | [`docs/ACCURACY.md`](./ACCURACY.md) | 识别全部号码状态与提升准确率指南 |
