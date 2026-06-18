@@ -1,6 +1,6 @@
 # 回铃音检测平台 — 服务端建设方案(Rust 版)
 
-> 本文是服务端建设方案的 **Rust 技术栈版本**,与 [Java 版](./回铃音检测平台-服务端建设方案.md) 结构一一对应;两版**架构、协议契约、算法原理完全相同**,差异仅在语言/框架选型与运行特性。
+> 本文是服务端建设方案的 **Rust 技术栈版本**,与 [Java 版](./回铃音检测平台-服务端建设方案-Java版.md) 结构一一对应;两版**架构、协议契约、算法原理完全相同**,差异仅在语言/框架选型与运行特性。
 > 场景范围:**仅实时**。配套:[`docs/INTEGRATION.md`](./INTEGRATION.md)(协议契约)、[`docs/ACCURACY.md`](./ACCURACY.md)、`server/`(现有 Python 参考实现,作算法对拍基线)。
 > **§10 给出 Java 版与 Rust 版的优缺点对比**,供选型决策。
 
@@ -33,7 +33,7 @@
 - 消息流:`START`(C→S,首帧+鉴权)→ `ready`/`error`(S→C)→ `AUDIO`(C→S 二进制)→ `RESULT`(S→C,可多条)→ `STOP`(C→S)/`FIN`(S→C)。
 - `RESULT.accuracy` 仅 `ACCURACY` 触发上报/挂机;号码状态标准表 id 2-20。
 
-> **全部字段的完整清单**直接复用 Java 版 [附录 A:接口字段完整版](./回铃音检测平台-服务端建设方案.md#附录-a接口字段完整版)(协议同版本 v1,跨语言一致),权威来源 [`docs/INTEGRATION.md`](./INTEGRATION.md)。
+> **全部字段的完整清单**直接复用 Java 版 [附录 A:接口字段完整版](./回铃音检测平台-服务端建设方案-Java版.md#附录-a接口字段完整版)(协议同版本 v1,跨语言一致),权威来源 [`docs/INTEGRATION.md`](./INTEGRATION.md)。
 
 Rust 侧实现要点:
 - 用 `serde` / `serde_json` 反序列化 `START`、序列化 `RESULT`;用 `#[serde(tag = "type")]` 区分消息类型。
@@ -330,7 +330,7 @@ trait AsrEngine: Send + Sync {
 
 | 文档 | 内容 |
 |---|---|
-| [`docs/回铃音检测平台-服务端建设方案.md`](./回铃音检测平台-服务端建设方案.md) | 服务端建设方案 **Java 版**(含接口字段完整版附录 A) |
+| [`docs/回铃音检测平台-服务端建设方案-Java版.md`](./回铃音检测平台-服务端建设方案-Java版.md) | 服务端建设方案 **Java 版**(含接口字段完整版附录 A) |
 | [`docs/回铃音检测平台-服务端建设方案-Python版.md`](./回铃音检测平台-服务端建设方案-Python版.md) | 服务端建设方案 **Python 版**(复用现有 `server/`,含 Java vs Python 对比) |
 | [`docs/回铃音检测-技术方案沟通.md`](./回铃音检测-技术方案沟通.md) | 总体技术方案沟通(工程实现版) |
 | [`docs/INTEGRATION.md`](./INTEGRATION.md) | WebSocket 协议 v1、对接契约、状态对照表(id 2-20)、FreeSWITCH 侧对接 |
